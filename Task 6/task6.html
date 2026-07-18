@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Electron Diffraction Ring Model</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f3f3f3}
+body{font-family:Tahoma,Arial,sans-serif;color:#222}
+.window{width:min(1080px,calc(100vw - 18px));margin:9px auto 22px;background:#ededed;border:1px solid #777}
+.titlebar{height:38px;display:flex;align-items:center;padding:0 12px;background:#5d96ce;color:#fff;font-size:21px;font-weight:bold}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 310px}
+.display{padding:10px;background:#fff;border-right:1px solid #999}
+.sidebar{padding:9px}.panel{margin-bottom:8px;padding:8px;background:#f2f2f2;border:1px solid #9fb5ca}
+.panel-title{margin:-2px 0 7px;color:#555;font-size:13px}
+.row{display:grid;grid-template-columns:95px 1fr 70px;align-items:center;gap:7px;margin:8px 0;font-size:12px}
+.row label{text-align:right}.readout{padding:3px;background:#fff;border:2px inset #ddd;text-align:center;font-family:"Courier New",monospace}
+input[type=range]{width:100%}.option{display:flex;align-items:center;gap:6px;margin:7px 0;font-size:12px}
+canvas{display:block;width:100%;height:auto;background:#fff;border:1px solid #777}
+#screen{background:#020602}.measure-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.measure{min-height:53px;padding:5px;background:#fff;border:1px solid #aaa}
+.measure .label{font-size:10px;color:#666}.measure .value{margin-top:5px;font:700 12px "Courier New",monospace}
+.table{width:100%;border-collapse:collapse;background:#fff;font-size:10px}.table th,.table td{padding:4px;border:1px solid #bbb;text-align:center}
+.status{margin-top:7px;padding:7px;background:#ffff8f;border:2px solid #333;font-size:11px;line-height:1.35}
+.graph-wrap{padding:9px;border-top:1px solid #999;background:#eee}.explain{padding:8px;border-top:1px solid #aaa;background:#e8e8e8}
+.text{padding:8px;background:#fff;border:1px solid #aaa;font-size:11px;line-height:1.45}.eq{font:13px Georgia,serif}
+@media(max-width:800px){.main{grid-template-columns:1fr}.display{border-right:0;border-bottom:1px solid #999}}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">Electron Diffraction from Graphite</div>
+
+  <div class="main">
+    <section class="display">
+      <canvas id="screen" width="720" height="600"></canvas>
+    </section>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <div class="panel-title">Model controls</div>
+        <div class="row"><label>Voltage</label><input id="voltage" type="range" min="1000" max="5000" value="3000" step="10"><div class="readout" id="voltageOut"></div></div>
+        <div class="row"><label>Max order</label><input id="orders" type="range" min="1" max="5" value="3" step="1"><div class="readout" id="ordersOut"></div></div>
+        <label class="option"><input id="d1" type="checkbox" checked> Show d = 0.123 nm rings</label>
+        <label class="option"><input id="d2" type="checkbox" checked> Show d = 0.213 nm rings</label>
+        <label class="option"><input id="relativity" type="checkbox"> Include relativistic correction</label>
+        <label class="option"><input id="labels" type="checkbox" checked> Label ring radii</label>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Calculated values</div>
+        <div class="measure-grid">
+          <div class="measure"><div class="label">Electron wavelength</div><div class="value" id="lambdaOut"></div></div>
+          <div class="measure"><div class="label">Electron momentum</div><div class="value" id="momentumOut"></div></div>
+          <div class="measure"><div class="label">Kinetic energy</div><div class="value" id="energyOut"></div></div>
+          <div class="measure"><div class="label">Screen radius</div><div class="value">65.0 mm</div></div>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Visible rings</div>
+        <table class="table">
+          <thead><tr><th>d / nm</th><th>n</th><th>θ / °</th><th>x / mm</th></tr></thead>
+          <tbody id="ringRows"></tbody>
+        </table>
+      </div>
+    </aside>
+  </div>
+
+  <section class="graph-wrap">
+    <canvas id="graph" width="1040" height="310"></canvas>
+  </section>
+
+  <section class="explain">
+    <div class="text">
+      <div class="eq">
+        λ = h/√(2m<sub>e</sub>eV), &nbsp;
+        2d sinθ = nλ, &nbsp;
+        φ = 2θ, &nbsp;
+        x = r sinφ
+      </div>
+      The graph checks the model by plotting <b>1/√V</b> against
+      <b>sin(φ/2) = sinθ</b>. Each first-order series is a straight line.
+      Its gradient can be used to recover the graphite spacing:
+      <b>d = nhk/[2√(2m<sub>e</sub>e)]</b>.
+    </div>
+  </section>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const h=6.62607015e-34,me=9.1093837015e-31,e=1.602176634e-19,c=2.99792458e8,r=.065,$=id=>document.getElementById(id);
+const spacings=[{d:.123e-9,label:".123",bright:1},{d:.213e-9,label:".213",bright:.72}];
+
+function state(){return{V:+$("voltage").value,maxOrder:+$("orders").value,use:[$("d1").checked,$("d2").checked],rel:$("relativity").checked,labels:$("labels").checked}}
+function wavelength(V,rel){return h/Math.sqrt(2*me*e*V*(rel?1+e*V/(2*me*c*c):1))}
+function rings(s){
+  const lam=wavelength(s.V,s.rel),out=[];
+  spacings.forEach((sp,j)=>{
+    if(!s.use[j])return;
+    for(let n=1;n<=s.maxOrder;n++){
+      const a=n*lam/(2*sp.d);
+      if(a<=1){
+        const theta=Math.asin(a),phi=2*theta,x=r*Math.sin(phi);
+        if(x<=r)out.push({...sp,j,n,theta,phi,x});
+      }
+    }
+  });
+  return{lam,out};
+}
+function update(){
+  const s=state(),data=rings(s),p=h/data.lam;
+  $("voltageOut").textContent=`${(s.V/1000).toFixed(2)} kV`;
+  $("ordersOut").textContent=`n ≤ ${s.maxOrder}`;
+  $("lambdaOut").textContent=`${(data.lam*1e9).toFixed(5)} nm`;
+  $("momentumOut").textContent=`${p.toExponential(3)} kg m/s`;
+  $("energyOut").textContent=`${(s.V/1000).toFixed(3)} keV`;
+  $("status").textContent=`Increasing the accelerating voltage shortens the electron wavelength, reducing the Bragg angle and moving every diffraction ring towards the centre. ${s.rel?"Relativistic correction is on.":"The task's non-relativistic wavelength is being used."}`;
+  $("ringRows").innerHTML=data.out.map(q=>`<tr><td>${q.label}</td><td>${q.n}</td><td>${(q.theta*180/Math.PI).toFixed(3)}</td><td>${(q.x*1000).toFixed(3)}</td></tr>`).join("")||'<tr><td colspan="4">No rings selected</td></tr>';
+  drawScreen(s,data);drawGraph(s);
+}
+function drawScreen(s,data){
+  const cv=$("screen"),ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height,cx=W/2,cy=H/2,R=Math.min(W,H)*.42,scale=R/.065;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Simple black screen with a faint dark-green circular phosphor area.
+  ctx.fillStyle="#000";
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle="#071407";
+  ctx.beginPath();
+  ctx.arc(cx,cy,R,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.strokeStyle="#315431";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.arc(cx,cy,R,0,Math.PI*2);
+  ctx.stroke();
+
+  // Small central transmitted beam.
+  ctx.fillStyle="#d8ffd8";
+  ctx.beginPath();
+  ctx.arc(cx,cy,5,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.strokeStyle="#72d672";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.arc(cx,cy,9,0,Math.PI*2);
+  ctx.stroke();
+
+  // Clean, single-line diffraction rings.
+  data.out.forEach(q=>{
+    const pr=q.x*scale;
+
+    ctx.strokeStyle=q.j===0?"#68d868":"#3ea84c";
+    ctx.lineWidth=q.n===1?2.4:1.6;
+    ctx.globalAlpha=q.n===1?.95:.70;
+
+    ctx.beginPath();
+    ctx.arc(cx,cy,pr,0,Math.PI*2);
+    ctx.stroke();
+  });
+  ctx.globalAlpha=1;
+
+  // Top-left readout box.
+  ctx.fillStyle="rgba(0,0,0,.78)";
+  ctx.fillRect(14,14,205,66);
+  ctx.strokeStyle="#4d7a4d";
+  ctx.lineWidth=1;
+  ctx.strokeRect(14,14,205,66);
+
+  ctx.fillStyle="#e8f5e8";
+  ctx.font="bold 15px Tahoma";
+  ctx.fillText(`V = ${(s.V/1000).toFixed(2)} kV`,26,39);
+
+  ctx.font="12px Tahoma";
+  ctx.fillText(`λ = ${(data.lam*1e9).toFixed(5)} nm`,26,61);
+
+  // Separate ring key.
+  if(s.labels){
+    const rows=data.out;
+    const rowH=21;
+    const boxW=190;
+    const boxH=34+rows.length*rowH;
+    const boxX=W-boxW-14;
+    const boxY=14;
+
+    ctx.fillStyle="rgba(0,0,0,.80)";
+    ctx.fillRect(boxX,boxY,boxW,boxH);
+    ctx.strokeStyle="#4d7a4d";
+    ctx.strokeRect(boxX,boxY,boxW,boxH);
+
+    ctx.fillStyle="#e8f5e8";
+    ctx.font="bold 13px Tahoma";
+    ctx.fillText("Visible diffraction rings",boxX+12,boxY+21);
+
+    rows.forEach((q,i)=>{
+      const y=boxY+43+i*rowH;
+      const col=q.j===0?"#68d868":"#3ea84c";
+
+      ctx.strokeStyle=col;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(boxX+12,y-4);
+      ctx.lineTo(boxX+31,y-4);
+      ctx.stroke();
+
+      ctx.fillStyle="#e8f5e8";
+      ctx.font="11px Tahoma";
+      ctx.fillText(
+        `d=${q.label} nm, n=${q.n}, x=${(q.x*1000).toFixed(1)} mm`,
+        boxX+38,y
+      );
+    });
+  }
+
+  // Bottom caption.
+  ctx.fillStyle="rgba(0,0,0,.75)";
+  ctx.fillRect(14,H-42,250,28);
+  ctx.fillStyle="#cfe8cf";
+  ctx.font="11px Tahoma";
+  ctx.fillText("Spherical phosphor screen radius: 65 mm",25,H-23);
+}
+function line(ctx,x1,y1,x2,y2,col="#333",w=1){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke()}
+function drawGraph(s){
+  const cv=$("graph"),ctx=cv.getContext("2d"),b={l:75,t:42,r:1015,b:260};
+  ctx.clearRect(0,0,cv.width,cv.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.fillStyle="#111";ctx.font="bold 16px Tahoma";ctx.fillText("Straight-line verification: 1/√V against sin(φ/2)",18,23);
+  const points=spacings.map(sp=>Array.from({length:41},(_,i)=>{
+    const V=1000+i*100,lam=wavelength(V,s.rel),x=lam/(2*sp.d);
+    return{x,y:1/Math.sqrt(V),V};
+  }));
+  const xmax=Math.max(...points.flat().map(p=>p.x))*1.08,ymax=.034,X=x=>b.l+x/xmax*(b.r-b.l),Y=y=>b.b-y/ymax*(b.b-b.t);
+  for(let i=0;i<=5;i++){const x=xmax*i/5;line(ctx,X(x),b.t,X(x),b.b,"#e5e5e5");ctx.fillStyle="#444";ctx.font="10px Tahoma";ctx.fillText(x.toFixed(3),X(x)-10,b.b+15)}
+  for(let i=0;i<=5;i++){const y=ymax*i/5;line(ctx,b.l,Y(y),b.r,Y(y),"#e5e5e5");ctx.fillText(y.toFixed(3),b.l-38,Y(y)+3)}
+  line(ctx,b.l,b.b,b.r,b.b,"#333",1.2);line(ctx,b.l,b.t,b.l,b.b,"#333",1.2);
+  ctx.fillStyle="#333";ctx.font="11px Tahoma";ctx.fillText("sin(φ/2)",(b.l+b.r)/2-20,cv.height-8);
+  ctx.save();ctx.translate(16,(b.t+b.b)/2);ctx.rotate(-Math.PI/2);ctx.fillText("1 / √V  / V⁻¹ᐟ²",0,0);ctx.restore();
+
+  const colours=["#1a9c33","#2168c7"];
+  points.forEach((arr,j)=>{
+    ctx.strokeStyle=colours[j];ctx.lineWidth=2;ctx.beginPath();
+    arr.forEach((p,i)=>i?ctx.lineTo(X(p.x),Y(p.y)):ctx.moveTo(X(p.x),Y(p.y)));ctx.stroke();
+    arr.forEach(p=>{ctx.fillStyle=colours[j];ctx.beginPath();ctx.arc(X(p.x),Y(p.y),2.5,0,Math.PI*2);ctx.fill()});
+    const current=arr.reduce((a,p)=>Math.abs(p.V-s.V)<Math.abs(a.V-s.V)?p:a,arr[0]);
+    ctx.strokeStyle="#c21d1d";ctx.lineWidth=2;ctx.beginPath();ctx.arc(X(current.x),Y(current.y),6,0,Math.PI*2);ctx.stroke();
+  });
+  ctx.fillStyle="#1a9c33";ctx.fillRect(780,52,18,3);ctx.fillStyle="#222";ctx.fillText("d = 0.123 nm",805,57);
+  ctx.fillStyle="#2168c7";ctx.fillRect(780,72,18,3);ctx.fillStyle="#222";ctx.fillText("d = 0.213 nm",805,77);
+  ctx.fillStyle="#c21d1d";ctx.font="10px Tahoma";ctx.fillText("red circles = current voltage",780,98);
+}
+["voltage","orders","d1","d2","relativity","labels"].forEach(id=>$(id).addEventListener("input",update));
+update();
+})();
+</script>
+</body>
+</html>
