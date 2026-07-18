@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hydrogen Spectrum Explorer</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f4f4f4}
+body{font-family:Tahoma,Arial,sans-serif;color:#222}
+.window{width:min(1240px,calc(100vw - 18px));margin:9px auto 22px;background:#ededed;border:1px solid #777}
+.titlebar{height:38px;display:flex;align-items:center;padding:0 12px;background:#5d96ce;color:#fff;font-size:21px;font-weight:bold;border-bottom:1px solid #777}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 330px;min-height:650px}
+.sim{background:#fff;border-right:1px solid #999;padding:8px}
+.panel{margin-bottom:8px;padding:8px;background:#f2f2f2;border:1px solid #9fb5ca}
+.panel-title{margin:-2px 0 7px;color:#555;font-size:13px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.row{display:grid;grid-template-columns:112px 1fr 72px;align-items:center;gap:7px;font-size:12px}
+.row label{text-align:right}.readout{padding:3px 5px;background:#fff;border:2px inset #ddd;text-align:center;font-family:"Courier New",monospace}
+select,input[type=range]{width:100%}select{padding:5px;border:2px inset #eee;background:#fff;font-family:inherit}
+button{padding:6px 10px;background:#dedede;border:2px outset #eee;font:12px inherit;cursor:pointer}
+button:active{border-style:inset}.buttons{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.option{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px}
+canvas{display:block;width:100%;height:auto;background:#fff;border:1px solid #777}
+#atom{margin-bottom:8px}
+.sidebar{padding:9px;background:#ededed}
+.measure-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.measure{min-height:56px;padding:5px;background:#fff;border:1px solid #aaa}
+.measure .label{font-size:10px;color:#666}.measure .value{margin-top:5px;font:700 13px "Courier New",monospace}
+.status{margin-top:7px;padding:7px;background:#ffff8f;border:2px solid #333;font-size:11px;line-height:1.35}
+.legend{font-size:11px;line-height:1.6}.swatch{display:inline-block;width:13px;height:2px;margin:0 5px 3px 0;vertical-align:middle}
+.explain{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;border-top:1px solid #999;background:#e8e8e8}
+.text{padding:8px;background:#fff;border:1px solid #aaa;font-size:11px;line-height:1.45}
+.text h3{margin:0 0 4px;font-size:12px}.eq{font:13px Georgia,serif}
+.constants{padding:5px 8px;background:#f5f5f5;border-top:1px solid #aaa;color:#555;font-size:9px}
+@media(max-width:900px){.main{grid-template-columns:1fr}.sim{border-right:0;border-bottom:1px solid #999}.controls,.explain{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">Hydrogen Emission Spectrum and Bohr Model</div>
+
+  <div class="main">
+    <section class="sim">
+      <div class="panel">
+        <div class="panel-title">Transition controls</div>
+        <div class="controls">
+          <div class="row"><label>Hydrogenic ion</label><select id="ion"></select><span></span></div>
+          <div class="row"><label>Series / final level</label><select id="series"></select><span></span></div>
+          <div class="row"><label>Initial level n</label><input id="nSlider" type="range" min="3" max="15" value="3"><div class="readout" id="nOut">n = 3</div></div>
+          <div class="row"><label>Animation speed</label><input id="speed" type="range" min="25" max="150" value="80"><div class="readout" id="speedOut">1.0×</div></div>
+        </div>
+        <label class="option"><input id="showAll" type="checkbox" checked> Show all five spectral series</label>
+        <label class="option"><input id="trail" type="checkbox" checked> Show emitted photon trail</label>
+        <div class="buttons">
+          <button id="animate">Animate transition</button>
+          <button id="reset">Reset</button>
+          <button id="record">Record point</button>
+          <button id="clear">Clear points</button>
+          <button id="export">Export CSV</button>
+        </div>
+      </div>
+
+      <canvas id="atom" width="870" height="520" aria-label="Bohr energy-level animation"></canvas>
+      <canvas id="spectrum" width="870" height="355" aria-label="Photon energy against wavelength graph"></canvas>
+    </section>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <div class="panel-title">Calculated values</div>
+        <div class="measure-grid" id="measureGrid"></div>
+        <div class="status" id="status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Series key</div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Selected spectral line</div>
+        <canvas id="strip" width="310" height="190"></canvas>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Recorded transitions</div>
+        <div id="recordCount" style="font-size:12px">0 points recorded</div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="explain">
+    <div class="text">
+      <h3>Bohr energy levels</h3>
+      <div class="eq">
+        E<sub>n</sub> = −13.6057 Z²/n² eV<br>
+        E<sub>γ</sub> = E<sub>n</sub> − E<sub>m</sub><br>
+        E<sub>γ</sub> = 13.6057 Z²(1/m² − 1/n²)
+      </div>
+      An emitted photon is produced when an electron moves from a higher initial level n to a lower final level m. The energy difference fixes the photon frequency and wavelength.
+    </div>
+    <div class="text">
+      <h3>Spectrum interpretation</h3>
+      <div class="eq">E<sub>γ</sub> = hf = hc/λ</div>
+      Lyman transitions end at m = 1, Balmer at m = 2, Paschen at m = 3, Brackett at m = 4 and Pfund at m = 5. For hydrogen, the Balmer series contains the strongest familiar visible lines.
+    </div>
+  </section>
+  <div class="constants">Constants: h = 6.62607015×10⁻³⁴ J s, c = 2.99792458×10⁸ m s⁻¹, e = 1.602176634×10⁻¹⁹ C, hydrogen ground-state magnitude = 13.605693 eV.</div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const h=6.62607015e-34,c=2.99792458e8,e=1.602176634e-19,E1=13.605693,$=id=>document.getElementById(id);
+const series=[
+{name:"Lyman",m:1,color:"#d000ff"},
+{name:"Balmer",m:2,color:"#f03020"},
+{name:"Paschen",m:3,color:"#234cff"},
+{name:"Brackett",m:4,color:"#19bb38"},
+{name:"Pfund",m:5,color:"#222222"}
+];
+const ions=[
+{name:"Hydrogen, H",Z:1},
+{name:"Helium ion, He⁺",Z:2},
+{name:"Lithium ion, Li²⁺",Z:3},
+{name:"Beryllium ion, Be³⁺",Z:4}
+];
+ions.forEach((x,i)=>$("ion").add(new Option(`${x.name}  (Z = ${x.Z})`,i)));
+series.forEach((x,i)=>$("series").add(new Option(`${x.name}, m = ${x.m}`,i)));
+$("series").value=1;
+
+const measures=[
+["Transition","transitionOut"],["Photon energy","energyOut"],["Wavelength","wavelengthOut"],["Frequency","frequencyOut"],
+["Initial energy","initialOut"],["Final energy","finalOut"],["Series limit","limitOut"],["Region","regionOut"]
+];
+$("measureGrid").innerHTML=measures.map(([a,b])=>`<div class="measure"><div class="label">${a}</div><div class="value" id="${b}">—</div></div>`).join("");
+$("legend").innerHTML=series.map(s=>`<div><span class="swatch" style="background:${s.color}"></span>${s.name}: transitions to m = ${s.m}</div>`).join("");
+
+let anim=null,recorded=[],last=performance.now();
+
+function state(){
+  const ion=ions[+$("ion").value],ser=series[+$("series").value],n=Math.round(+$("nSlider").value);
+  return{Z:ion.Z,ionName:ion.name,m:ser.m,seriesName:ser.name,n,showAll:$("showAll").checked,trail:$("trail").checked,speed:+$("speed").value/80};
+}
+function calc(s){
+  const Ei=-E1*s.Z*s.Z/(s.n*s.n),Ef=-E1*s.Z*s.Z/(s.m*s.m),energy=Ei-Ef;
+  const wavelength=h*c/(energy*e)*1e9,frequency=c/(wavelength*1e-9),limit=91.1267*s.m*s.m/(s.Z*s.Z);
+  const region=wavelength<380?"Ultraviolet":wavelength<=750?"Visible":"Infrared";
+  return{Ei,Ef,energy,wavelength,frequency,limit,region};
+}
+function colourForWavelength(nm){
+  if(nm<380)return"#8b35bd";if(nm>750)return"#7a241d";
+  let r=0,g=0,b=0;
+  if(nm<440){r=(440-nm)/60;b=1}else if(nm<490){g=(nm-440)/50;b=1}else if(nm<510){g=1;b=(510-nm)/20}
+  else if(nm<580){r=(nm-510)/70;g=1}else if(nm<645){r=1;g=(645-nm)/65}else r=1;
+  return`rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`;
+}
+function updateSliderBounds(){
+  const m=series[+$("series").value].m;
+  $("nSlider").min=m+1;
+  if(+$("nSlider").value<=m)$("nSlider").value=m+1;
+}
+function setText(id,v){$(id).textContent=v}
+function update(){
+  updateSliderBounds();
+  const s=state(),r=calc(s);
+  setText("nOut",`n = ${s.n}`);setText("speedOut",`${s.speed.toFixed(1)}×`);
+  setText("transitionOut",`${s.n} → ${s.m}`);setText("energyOut",`${r.energy.toFixed(5)} eV`);
+  setText("wavelengthOut",`${r.wavelength.toFixed(3)} nm`);setText("frequencyOut",`${r.frequency.toExponential(4)} Hz`);
+  setText("initialOut",`${r.Ei.toFixed(4)} eV`);setText("finalOut",`${r.Ef.toFixed(4)} eV`);
+  setText("limitOut",`${r.limit.toFixed(3)} nm`);setText("regionOut",r.region);
+  setText("status",`${s.ionName}: electron transition n = ${s.n} to m = ${s.m} (${s.seriesName}). The emitted photon has ${r.energy.toFixed(4)} eV and wavelength ${r.wavelength.toFixed(2)} nm, placing it in the ${r.region.toLowerCase()} region.`);
+  drawAtom(s,r);drawSpectrum(s,r);drawStrip(s,r);
+}
+function line(ctx,x1,y1,x2,y2,col="#333",w=1,dash=[]){ctx.beginPath();ctx.setLineDash(dash);ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke();ctx.setLineDash([])}
+function arrow(ctx,x1,y1,x2,y2,col,w=2){
+  line(ctx,x1,y1,x2,y2,col,w);const a=Math.atan2(y2-y1,x2-x1),L=10;
+  ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-L*Math.cos(a-.5),y2-L*Math.sin(a-.5));ctx.lineTo(x2-L*Math.cos(a+.5),y2-L*Math.sin(a+.5));ctx.closePath();ctx.fill();
+}
+function drawAtom(s,r){
+  const cv=$("atom"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,W,H);
+
+  // Main heading and scale note are kept in their own clear area.
+  ctx.fillStyle="#111";
+  ctx.font="bold 18px Tahoma";
+  ctx.fillText(`Bohr energy-level diagram — ${s.ionName}, Z = ${s.Z}`,18,28);
+
+  ctx.fillStyle="#666";
+  ctx.font="11px Tahoma";
+  ctx.fillText(
+    "Schematic non-linear vertical scale: level spacing decreases as n increases; energy labels are exact.",
+    18,50
+  );
+
+  const maxN=Math.max(8,s.n);
+
+  // Larger plotting area and larger information panel.
+  const left=105,right=530,top=112,bottom=465;
+  const infoX=598,infoY=82,infoW=252,infoH=342;
+
+  /*
+    Use progressively smaller gaps for higher levels.
+    This preserves the physical convergence of the levels without
+    forcing the high-n lines to overlap as they would on a strict
+    linear energy scale.
+  */
+  const gapWeights=[];
+  for(let i=1;i<maxN;i++)gapWeights.push(1/Math.sqrt(i));
+
+  const totalWeight=gapWeights.reduce((sum,value)=>sum+value,0);
+
+  const Y=n=>{
+    if(n<=1)return bottom;
+    let usedWeight=0;
+    for(let i=0;i<n-1;i++)usedWeight+=gapWeights[i];
+    return bottom-(usedWeight/totalWeight)*(bottom-top);
+  };
+
+  // Ionisation limit now sits below the note, with no text collision.
+  const ionY=top-24;
+  line(ctx,left,ionY,right,ionY,"#777",1.2,[5,4]);
+  ctx.fillStyle="#555";
+  ctx.font="bold 11px Tahoma";
+  ctx.fillText("Ionisation limit: E = 0 eV",left,ionY-9);
+
+  // Draw energy levels.
+  for(let n=1;n<=maxN;n++){
+    const En=-E1*s.Z*s.Z/(n*n);
+    const selected=n===s.n||n===s.m;
+    const y=Y(n);
+
+    if(selected){
+      ctx.fillStyle="rgba(36,105,170,.10)";
+      ctx.fillRect(left-64,y-9,right-left+138,18);
+    }
+
+    line(ctx,left,y,right,y,selected?"#2369aa":"#9a9a9a",selected?3:1);
+
+    ctx.textAlign="right";
+    ctx.fillStyle=selected?"#154d86":"#333";
+    ctx.font=selected?"bold 12px Tahoma":"11px Tahoma";
+    ctx.fillText(`n = ${n}`,left-13,y+4);
+
+    ctx.textAlign="left";
+    ctx.fillStyle=selected?"#154d86":"#555";
+    ctx.font=selected?"bold 11px Tahoma":"10px Tahoma";
+    ctx.fillText(`${En.toFixed(3)} eV`,right+11,y+4);
+  }
+  ctx.textAlign="left";
+
+  // Selected transition.
+  const yi=Y(s.n),yf=Y(s.m);
+  const arrowX=460;
+  arrow(ctx,arrowX,yi,arrowX,yf,"#c21d1d",3);
+
+  const transitionLabelY=Math.max(top+13,Math.min(bottom-8,(yi+yf)/2-6));
+  ctx.fillStyle="#9d1717";
+  ctx.font="bold 11px Tahoma";
+  ctx.fillText(`n = ${s.n} → m = ${s.m}`,arrowX+13,transitionLabelY);
+
+  if(!anim){
+    ctx.fillStyle="#d91d25";
+    ctx.beginPath();
+    ctx.arc(arrowX,yi,7,0,Math.PI*2);
+    ctx.fill();
+  }else{
+    const smooth=3*anim.progress*anim.progress-2*anim.progress*anim.progress*anim.progress;
+    const y=yi+(yf-yi)*smooth;
+
+    ctx.fillStyle="#d91d25";
+    ctx.beginPath();
+    ctx.arc(arrowX,y,7,0,Math.PI*2);
+    ctx.fill();
+
+    if(anim.progress>.68){
+      const p=(anim.progress-.68)/.32;
+      const x0=486,x1=x0+87*p;
+      const col=colourForWavelength(r.wavelength);
+      const photonY=(yi+yf)/2;
+
+      ctx.strokeStyle=col;
+      ctx.lineWidth=2.3;
+      ctx.beginPath();
+
+      for(let i=0;i<=70;i++){
+        const t=i/70;
+        const x=x0+(x1-x0)*t;
+        const yWave=photonY+6*Math.sin(t*10*Math.PI);
+        i?ctx.lineTo(x,yWave):ctx.moveTo(x,yWave);
+      }
+      ctx.stroke();
+
+      if(s.trail){
+        ctx.fillStyle=col;
+        ctx.font="bold 11px Tahoma";
+        ctx.fillText("emitted photon",493,photonY-13);
+      }
+    }
+  }
+
+  // Larger selected-transition box.
+  ctx.fillStyle="#f7f7f7";
+  ctx.fillRect(infoX,infoY,infoW,infoH);
+  ctx.strokeStyle="#999";
+  ctx.lineWidth=1.5;
+  ctx.strokeRect(infoX,infoY,infoW,infoH);
+
+  ctx.fillStyle="#5d96ce";
+  ctx.fillRect(infoX,infoY,infoW,38);
+  ctx.fillStyle="#fff";
+  ctx.font="bold 16px Tahoma";
+  ctx.fillText("Selected transition",infoX+16,infoY+25);
+
+  const rows=[
+    ["Initial level",`n = ${s.n}`],
+    ["Final level",`m = ${s.m}`],
+    ["Initial energy",`${r.Ei.toFixed(4)} eV`],
+    ["Final energy",`${r.Ef.toFixed(4)} eV`],
+    ["Photon energy",`${r.energy.toFixed(4)} eV`],
+    ["Wavelength",`${r.wavelength.toFixed(2)} nm`],
+    ["Frequency",`${r.frequency.toExponential(3)} Hz`],
+    ["Region",r.region]
+  ];
+
+  rows.forEach((row,i)=>{
+    const y=infoY+72+i*31;
+
+    ctx.fillStyle="#666";
+    ctx.font="11px Tahoma";
+    ctx.fillText(row[0],infoX+17,y);
+
+    ctx.fillStyle="#222";
+    ctx.font="bold 11px Tahoma";
+    ctx.fillText(row[1],infoX+130,y);
+
+    if(i<rows.length-1){
+      line(ctx,infoX+16,y+11,infoX+infoW-16,y+11,"#e2e2e2",1);
+    }
+  });
+
+  // Key placed in a separate bottom strip.
+  const keyY=H-23;
+  ctx.fillStyle="#2369aa";
+  ctx.fillRect(20,keyY-4,19,3);
+  ctx.fillStyle="#555";
+  ctx.font="10px Tahoma";
+  ctx.fillText("selected energy levels",45,keyY);
+
+  ctx.fillStyle="#c21d1d";
+  ctx.fillRect(181,keyY-4,19,3);
+  ctx.fillStyle="#555";
+  ctx.fillText("electron transition",206,keyY);
+}
+function axes(ctx,b,xLabel,yLabel,xTicks,yTicks,X,Y,xFmt,yFmt){
+  xTicks.forEach(v=>line(ctx,X(v),b.t,X(v),b.b,"#e5e5e5"));yTicks.forEach(v=>line(ctx,b.l,Y(v),b.r,Y(v),"#e5e5e5"));
+  line(ctx,b.l,b.b,b.r,b.b,"#333",1.2);line(ctx,b.l,b.t,b.l,b.b,"#333",1.2);
+  ctx.fillStyle="#333";ctx.font="10px Tahoma";ctx.textAlign="center";xTicks.forEach(v=>ctx.fillText(xFmt(v),X(v),b.b+15));ctx.fillText(xLabel,(b.l+b.r)/2,cvHeight(ctx)-6);
+  ctx.save();ctx.translate(14,(b.t+b.b)/2);ctx.rotate(-Math.PI/2);ctx.fillText(yLabel,0,0);ctx.restore();
+  ctx.textAlign="right";yTicks.forEach(v=>ctx.fillText(yFmt(v),b.l-7,Y(v)+3));ctx.textAlign="left";
+}
+function cvHeight(ctx){return ctx.canvas.height}
+function drawSpectrum(s,r){
+  const cv=$("spectrum"),ctx=cv.getContext("2d"),b={l:65,t:42,r:845,b:305};
+  ctx.clearRect(0,0,cv.width,cv.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.fillStyle="#111";ctx.font="bold 17px Tahoma";ctx.fillText("Photon energy vs wavelength",18,25);
+  const xMax=8000/(s.Z*s.Z),yMax=14*s.Z*s.Z,X=x=>b.l+x/xMax*(b.r-b.l),Y=y=>b.b-y/yMax*(b.b-b.t);
+  if(750<xMax){ctx.fillStyle="rgba(215,225,250,.35)";ctx.fillRect(X(380),b.t,X(750)-X(380),b.b-b.t);ctx.fillStyle="#5d69a8";ctx.font="10px Tahoma";ctx.fillText("visible",X(565)-15,b.t+13)}
+  const xTicks=Array.from({length:9},(_,i)=>xMax*i/8),yTicks=Array.from({length:8},(_,i)=>yMax*i/7);
+  axes(ctx,b,"Wavelength, λ / nm","Photon energy / eV",xTicks,yTicks,X,Y,v=>Math.round(v),v=>v.toFixed(0));
+  const drawSeries=s.showAll?series:[series[s.m-1]];
+  drawSeries.forEach(sr=>{
+    for(let n=sr.m+1;n<=20;n++){
+      const en=E1*s.Z*s.Z*(1/(sr.m*sr.m)-1/(n*n)),lam=h*c/(en*e)*1e9;
+      if(lam<=xMax){line(ctx,X(lam),Y(0),X(lam),Y(en),sr.color,.8,[2,2]);ctx.fillStyle=sr.color;ctx.font="14px Tahoma";ctx.fillText("*",X(lam)-3,Y(en)+4)}
+    }
+  });
+  ctx.strokeStyle="#c21d1d";ctx.lineWidth=2;ctx.beginPath();ctx.arc(X(r.wavelength),Y(r.energy),7,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle="#c21d1d";ctx.font="bold 11px Tahoma";ctx.fillText(`${s.n}→${s.m}`,X(r.wavelength)+8,Y(r.energy)-7);
+  recorded.filter(p=>p.Z===s.Z).forEach(p=>{ctx.fillStyle="#13851d";ctx.beginPath();ctx.arc(X(p.wavelength),Y(p.energy),3.5,0,Math.PI*2);ctx.fill()});
+}
+function drawStrip(s,r){
+  const cv=$("strip"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#222";ctx.font="bold 13px Tahoma";ctx.fillText("80–800 nm view",10,20);
+  const x0=20,x1=W-20,y0=55,y1=115,X=nm=>x0+(nm-80)/(800-80)*(x1-x0);
+  ctx.fillStyle="#51216f";ctx.fillRect(X(80),y0,X(380)-X(80),y1-y0);
+  for(let nm=380;nm<750;nm+=2){ctx.fillStyle=colourForWavelength(nm);ctx.fillRect(X(nm),y0,Math.max(1,X(nm+2)-X(nm)),y1-y0)}
+  ctx.fillStyle="#67211b";ctx.fillRect(X(750),y0,X(800)-X(750),y1-y0);
+  ctx.strokeStyle="#333";ctx.strokeRect(x0,y0,x1-x0,y1-y0);
+  ctx.fillStyle="#fff";ctx.font="bold 11px Tahoma";ctx.fillText("UV",X(220),90);ctx.fillStyle="#111";ctx.fillText("VISIBLE",X(520),90);ctx.fillStyle="#fff";ctx.fillText("IR",X(767),90);
+  if(r.wavelength>=80&&r.wavelength<=800){line(ctx,X(r.wavelength),y0-12,X(r.wavelength),y1+12,"#fff",3);line(ctx,X(r.wavelength),y0-12,X(r.wavelength),y1+12,"#111",1);ctx.fillStyle="#111";ctx.font="bold 11px Tahoma";ctx.fillText(`${r.wavelength.toFixed(1)} nm`,Math.max(5,Math.min(W-80,X(r.wavelength)-30)),145)}
+  else{ctx.fillStyle="#7b1b1b";ctx.font="11px Tahoma";ctx.fillText(`${r.wavelength.toFixed(1)} nm lies outside this view`,26,145)}
+  ctx.fillStyle="#444";ctx.font="10px Tahoma";ctx.fillText("80",x0-5,130);ctx.fillText("380",X(380)-10,130);ctx.fillText("750",X(750)-10,130);ctx.fillText("800",x1-12,130);
+}
+function animate(){
+  anim={progress:0};last=performance.now();requestAnimationFrame(frame);
+}
+function frame(now){
+  if(!anim)return;
+  const s=state(),r=calc(s),dt=(now-last)/1000;last=now;anim.progress+=dt*.75*s.speed;
+  if(anim.progress>=1){anim=null;drawAtom(s,r);return}
+  drawAtom(s,r);requestAnimationFrame(frame);
+}
+function record(){
+  const s=state(),r=calc(s);recorded.push({...s,...r});setText("recordCount",`${recorded.length} point${recorded.length===1?"":"s"} recorded`);drawSpectrum(s,r);
+}
+function exportCsv(){
+  if(!recorded.length)return alert("Record at least one transition first.");
+  const keys=["ionName","Z","seriesName","m","n","Ei","Ef","energy","wavelength","frequency","region"];
+  const rows=[keys,...recorded.map(p=>keys.map(k=>p[k]))];
+  const csv=rows.map(row=>row.map(v=>typeof v==="string"?`"${v.replaceAll('"','""')}"`:v).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="hydrogen_spectrum_data.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),0);
+}
+["ion","series","nSlider","speed","showAll","trail"].forEach(id=>$(id).addEventListener("input",update));
+$("animate").onclick=animate;$("record").onclick=record;$("clear").onclick=()=>{recorded=[];setText("recordCount","0 points recorded");update()};$("export").onclick=exportCsv;
+$("reset").onclick=()=>{$("ion").value=0;$("series").value=1;$("nSlider").value=3;$("speed").value=80;$("showAll").checked=true;$("trail").checked=true;anim=null;update()};
+update();
+})();
+</script>
+</body>
+</html>
