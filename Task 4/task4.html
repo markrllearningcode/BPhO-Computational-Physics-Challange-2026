@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Photoelectric Effect Simulation</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f5f5f5}
+body{font-family:Tahoma,Arial,sans-serif;color:#222}
+.window{width:min(1240px,calc(100vw - 20px));margin:10px auto 24px;background:#efefef;border:1px solid #777}
+.titlebar{display:flex;align-items:center;height:38px;padding:0 12px;color:#fff;background:#5d96ce;font-size:22px;font-weight:bold;border-bottom:1px solid #777}
+.main{display:grid;grid-template-columns:minmax(0,3fr) 330px;min-height:690px}
+.simulation-column{position:relative;background:#fff;border-right:1px solid #999;overflow:hidden}
+canvas{display:block;width:100%;height:auto;background:#fff}.sidebar{padding:9px;background:#ededed}
+.light-control,.voltage-panel{position:absolute;border:2px outset #eee}
+.light-control{top:28px;right:28px;width:365px;padding:10px 12px 12px;color:#fff;background:#686868;border-width:3px}
+.light-control h2{margin:0 0 9px;text-align:center;font-size:16px;font-weight:normal}
+.voltage-panel{left:31%;bottom:12px;width:39%;padding:7px 10px;background:#d9d9d9}
+.control-line{display:grid;grid-template-columns:78px 1fr 78px;align-items:center;gap:8px;margin:8px 0;font-size:12px}
+.control-line label{text-align:right}.voltage-panel .control-line{grid-template-columns:92px 1fr 80px;margin:0;color:#222}
+.value-readout{padding:3px 5px;color:#333;background:#fff;border:2px inset #ddd;text-align:center;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;cursor:pointer}
+#wavelength{height:17px;appearance:none;border:2px inset #888;background:linear-gradient(90deg,#3e2a71,#4b35bd 8%,#254cff 18%,#00a7ff 31%,#00d777 43%,#f4ec2f 59%,#ff9b20 74%,#ed2224 88%,#7a2020)}
+#wavelength::-webkit-slider-thumb,input[type=range]::-webkit-slider-thumb{appearance:none;width:15px;height:23px;background:#dedede;border:2px outset #eee}
+input[type=range]::-moz-range-thumb{width:13px;height:21px;border-radius:0;background:#dedede;border:2px outset #eee}
+.spectrum-labels{display:flex;justify-content:space-between;margin:-3px 86px 0;font-size:10px;color:#f2f2f2}
+fieldset{margin:0 0 8px;padding:8px 9px 10px;border:1px solid #9fb5ca;background:#f2f2f2}
+legend{color:#555;font-size:13px}select{width:100%;padding:5px 6px;border:2px inset #eee;background:#fff;font-family:inherit}
+.option{display:flex;align-items:flex-start;gap:7px;margin:7px 0;font-size:12px;line-height:1.25}.option input{margin:1px 0 0}
+.measure-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.measure{min-height:53px;padding:5px;background:#fff;border:1px solid #aaa}
+.measure .label{color:#666;font-size:10px}.measure .value{margin-top:5px;font:700 13px "Courier New",monospace;font-variant-numeric:tabular-nums}
+.status-box{margin-top:6px;padding:6px;background:#ffff8f;border:2px solid #333;font-size:11px;line-height:1.3}
+button{padding:5px 9px;border:2px outset #eee;background:#dedede;font:11px inherit;cursor:pointer}button:active{border-style:inset}
+.button-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.graph-section{padding:8px;border-top:1px solid #888;background:#efefef}.graph-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+.graph-header strong{font-size:13px}.graph-meta{color:#555;font-size:10px;text-align:right}#graph{border:1px solid #777}
+.explanation{display:grid;grid-template-columns:1.15fr 1fr;gap:8px;padding:8px;border-top:1px solid #aaa;background:#e8e8e8}
+.text-panel{padding:7px 9px;background:#fff;border:1px solid #aaa;font-size:11px;line-height:1.45}.text-panel h3{margin:0 0 4px;font-size:12px}
+.equations{font:13px Georgia,serif}.constants{padding:5px 8px;color:#555;background:#f5f5f5;border-top:1px solid #aaa;font-size:9px}
+@media(max-width:900px){.main{grid-template-columns:1fr}.simulation-column{border-right:0;border-bottom:1px solid #999}
+.light-control,.voltage-panel{position:static;width:auto;margin:8px}.sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+fieldset{margin:0}.explanation{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><span>Photoelectric Effect (Task 4)</span></div>
+
+  <div class="main">
+    <section class="simulation-column">
+      <canvas id="apparatus" width="900" height="610"></canvas>
+      <div class="light-control">
+        <h2>Incident light</h2>
+        <div class="control-line"><label>Intensity</label><input id="intensity" type="range" min="0" max="100" value="65"><div class="value-readout" id="intensityOut"></div></div>
+        <div class="control-line"><label>Wavelength</label><input id="wavelength" type="range" min="180" max="900" value="400"><div class="value-readout" id="wavelengthOut"></div></div>
+        <div class="spectrum-labels"><span>UV</span><span>visible</span><span>IR</span></div>
+      </div>
+      <div class="voltage-panel">
+        <div class="control-line"><label>Battery voltage</label><input id="voltage" type="range" min="-600" max="600"><div class="value-readout" id="voltageOut"></div></div>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <fieldset>
+        <legend>Target</legend><select id="metal"></select>
+        <label class="option"><input id="highestOnly" type="checkbox"> Show only highest-energy electrons</label>
+        <label class="option"><input id="showPhotons" type="checkbox" checked> Show incident photons</label>
+        <label class="option"><input id="showElectrons" type="checkbox" checked> Show photoelectrons</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Graphs</legend>
+        <label class="option"><input type="radio" name="graph" value="iv"> Current vs battery voltage</label>
+        <label class="option"><input type="radio" name="graph" value="intensity"> Current vs light intensity</label>
+        <label class="option"><input type="radio" name="graph" value="energy"> Electron energy vs light frequency</label>
+        <label class="option"><input type="radio" name="graph" value="stopping" checked> Stopping voltage vs light frequency</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Calculated measurements</legend>
+        <div class="measure-grid" id="measureGrid"></div>
+        <div class="status-box" id="statusOut"></div>
+        <div class="button-row"><button id="recordPoint">Record point</button><button id="clearPoints">Clear points</button><button id="exportCsv">Export CSV</button></div>
+      </fieldset>
+    </aside>
+  </div>
+
+  <section class="graph-section">
+    <div class="graph-header"><strong id="graphTitle"></strong><div class="graph-meta" id="graphMeta"></div></div>
+    <canvas id="graph" width="1220" height="360"></canvas>
+  </section>
+
+  <section class="explanation">
+    <div class="text-panel"><h3>Physics model</h3><div class="equations">
+      Photon energy: <b>E = hf = hc/λ</b><br>Einstein equation: <b>K<sub>max</sub> = hf − φ</b><br>
+      Stopping potential: <b>eV<sub>s</sub> = K<sub>max</sub></b><br>Threshold: <b>f<sub>0</sub> = φ/h</b>, <b>λ<sub>0</sub> = hc/φ</b>
+    </div>Emission occurs only when one photon has enough energy to overcome the work function. Intensity changes the photon rate and saturation current, but not the maximum kinetic energy.</div>
+    <div class="text-panel"><h3>Current model</h3>
+      Electron energies are spread from zero to K<sub>max</sub>. Positive voltage collects all emitted electrons; negative voltage removes lower-energy electrons until the current becomes zero at −V<sub>s</sub>. This is a simplified teaching model. On a V<sub>s</sub>-against-f graph, the gradient is <b>h/e</b>.
+    </div>
+  </section>
+  <div class="constants">Constants: h = 6.62607015×10⁻³⁴ J s, e = 1.602176634×10⁻¹⁹ C, c = 2.99792458×10⁸ m s⁻¹, mₑ = 9.1093837015×10⁻³¹ kg.</div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const h=6.62607015e-34,e=1.602176634e-19,c=2.99792458e8,me=9.1093837015e-31,$=id=>document.getElementById(id);
+const metals=[
+["Sodium","Na",2.28,"#c8c8c8"],["Calcium","Ca",2.90,"#b9c2c6"],["Aluminium","Al",4.08,"#d0d0d0"],["Zinc","Zn",4.30,"#aeb4b9"],
+["Copper","Cu",4.70,"#b66c45"],["Silver","Ag",4.73,"#d9d9de"],["Gold","Au",5.10,"#c8a03b"],["Nickel","Ni",5.15,"#999ca0"]
+].map(([name,symbol,phi,colour])=>({name,symbol,phi,colour}));
+
+const ids=["apparatus","graph","metal","wavelength","intensity","voltage","showPhotons","showElectrons","highestOnly"];
+const el=Object.fromEntries(ids.map(id=>[id,$(id)]));
+metals.forEach((m,i)=>el.metal.add(new Option(`${m.name} (${m.symbol}) — φ = ${m.phi.toFixed(2)} eV`,i)));
+
+const measures=[
+["Frequency","frequencyOut"],["Photon energy, hf","photonEnergyOut"],["Work function, φ","workFunctionOut"],["Maximum KE","keOut"],
+["Stopping voltage","stoppingOut"],["Maximum electron speed","speedOut"],["Threshold frequency","thresholdFrequencyOut"],["Threshold wavelength","thresholdWavelengthOut"]
+];
+$("measureGrid").innerHTML=measures.map(([label,id])=>`<div class="measure"><div class="label">${label}</div><div class="value" id="${id}">—</div></div>`).join("");
+
+let photons=[],electrons=[],recorded=[],last=performance.now(),photonClock=0,electronClock=0,graphType="stopping";
+const state=()=>({metalIndex:+el.metal.value,wavelengthNm:+el.wavelength.value,intensity:+el.intensity.value/100,voltage:+el.voltage.value/100,
+showPhotons:el.showPhotons.checked,showElectrons:el.showElectrons.checked,highestOnly:el.highestOnly.checked});
+
+function calc(s){
+  const frequency=c/(s.wavelengthNm*1e-9),photonEnergyEv=h*frequency/e,phi=metals[s.metalIndex].phi;
+  const emission=photonEnergyEv>=phi,maxKEEv=Math.max(photonEnergyEv-phi,0),stoppingVoltage=maxKEEv;
+  const thresholdFrequency=phi*e/h,thresholdWavelengthNm=c/thresholdFrequency*1e9,maxSpeed=emission?Math.sqrt(2*maxKEEv*e/me):0;
+  let current=0;
+  if(emission&&s.intensity) current=s.voltage>=0?s.intensity:s.voltage<=-stoppingVoltage?0:s.intensity*(1+s.voltage/stoppingVoltage);
+  return{frequency,photonEnergyEv,phi,emission,maxKEEv,stoppingVoltage,thresholdFrequency,thresholdWavelengthNm,maxSpeed,current:Math.max(0,Math.min(1,current))};
+}
+
+function wavelengthColour(n){
+  if(n<380)return"rgb(117,52,180)";if(n>750)return"rgb(130,45,35)";
+  let r=0,g=0,b=0;
+  if(n<440){r=(440-n)/60;b=1}else if(n<490){g=(n-440)/50;b=1}else if(n<510){g=1;b=(510-n)/20}
+  else if(n<580){r=(n-510)/70;g=1}else if(n<645){r=1;g=(645-n)/65}else r=1;
+  return`rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`;
+}
+
+function update(){
+  const s=state(),r=calc(s),set=(id,v)=>$(id).textContent=v;
+  set("wavelengthOut",`${s.wavelengthNm} nm`);set("intensityOut",`${Math.round(s.intensity*100)} %`);set("voltageOut",`${s.voltage.toFixed(2)} V`);
+  set("frequencyOut",`${(r.frequency/1e14).toFixed(3)}×10¹⁴ Hz`);set("photonEnergyOut",`${r.photonEnergyEv.toFixed(3)} eV`);
+  set("workFunctionOut",`${r.phi.toFixed(2)} eV`);set("keOut",`${r.maxKEEv.toFixed(3)} eV`);set("stoppingOut",`${r.stoppingVoltage.toFixed(3)} V`);
+  set("speedOut",r.maxSpeed?`${(r.maxSpeed/1e6).toFixed(3)}×10⁶ m/s`:"0 m/s");
+  set("thresholdFrequencyOut",`${(r.thresholdFrequency/1e14).toFixed(3)}×10¹⁴ Hz`);set("thresholdWavelengthOut",`${r.thresholdWavelengthNm.toFixed(1)} nm`);
+  set("statusOut",!s.intensity?"Lamp off: no photons arrive, so the photocurrent is zero."
+    :!r.emission?`No photoemission. hf = ${r.photonEnergyEv.toFixed(2)} eV is smaller than φ = ${r.phi.toFixed(2)} eV.`
+    :r.current<.0005?`Electrons are emitted, but the retarding field stops them. Required stopping voltage: ${r.stoppingVoltage.toFixed(2)} V.`
+    :`Photoelectrons reach the anode. Normalised current = ${r.current.toFixed(3)}; maximum KE = ${r.maxKEEv.toFixed(3)} eV.`);
+  drawGraph(s,r);
+}
+
+const line=(ctx,x1,y1,x2,y2,col="#333",w=1)=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke()};
+function drawLamp(ctx,col,intensity){
+  ctx.save();ctx.translate(240,78);ctx.rotate(-.72);ctx.fillStyle="#171717";ctx.fillRect(-36,-18,72,36);
+  ctx.beginPath();ctx.moveTo(33,-28);ctx.lineTo(68,-45);ctx.lineTo(68,45);ctx.lineTo(33,28);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#444";ctx.fillRect(-50,-13,16,26);ctx.restore();ctx.fillStyle="#111";ctx.font="bold 18px Tahoma";ctx.fillText("Lamp",170,32);
+  if(intensity){ctx.globalAlpha=.16+.28*intensity;ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(272,104);ctx.lineTo(385,235);ctx.lineTo(326,248);ctx.closePath();ctx.fill();ctx.globalAlpha=1}
+}
+
+function drawApparatus(s,r){
+  const ctx=el.apparatus.getContext("2d"),col=wavelengthColour(s.wavelengthNm),m=metals[s.metalIndex],cx=198,ax=702;
+  ctx.clearRect(0,0,900,610);ctx.fillStyle="#fff";ctx.fillRect(0,0,900,610);drawLamp(ctx,col,s.intensity);
+  ctx.strokeStyle="#222";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(170,235);ctx.bezierCurveTo(160,235,155,248,155,265);ctx.lineTo(155,438);
+  ctx.bezierCurveTo(155,455,162,466,176,466);ctx.lineTo(728,466);ctx.bezierCurveTo(742,466,749,455,749,438);ctx.lineTo(749,265);ctx.bezierCurveTo(749,248,742,235,732,235);ctx.closePath();ctx.stroke();
+  ctx.fillStyle=m.colour;ctx.fillRect(cx-10,260,20,170);ctx.fillStyle="#56655c";ctx.fillRect(cx+10,260,7,170);
+  ctx.fillStyle="#b18c35";ctx.fillRect(ax-10,260,20,170);
+
+  // Clear, high-contrast electrode labels above the plates
+  ctx.fillStyle="rgba(255,255,255,.92)";
+  ctx.fillRect(137,222,136,29);
+  ctx.fillRect(650,222,94,29);
+  ctx.strokeStyle="#888";ctx.lineWidth=1;
+  ctx.strokeRect(137,222,136,29);
+  ctx.strokeRect(650,222,94,29);
+  ctx.fillStyle="#111";ctx.font="bold 17px Tahoma";
+  ctx.fillText(`Cathode: ${m.symbol}`,146,243);
+  ctx.fillText("Anode",667,243);
+
+  ctx.strokeStyle="#9b7c33";ctx.lineWidth=15;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(cx,430);ctx.lineTo(cx,528);ctx.lineTo(370,528);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ax,430);ctx.lineTo(ax,528);ctx.lineTo(536,528);ctx.stroke();ctx.lineCap="butt";
+  ctx.fillStyle="#555";ctx.fillRect(370,500,75,56);ctx.fillStyle="#b58a31";ctx.fillRect(445,500,91,56);ctx.fillStyle="#222";ctx.font="16px Tahoma";ctx.fillText(s.voltage>=0?"−     +":"+     −",409,575);
+  ctx.fillStyle="#ffff76";ctx.fillRect(586,517,160,34);ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.strokeRect(586,517,160,34);ctx.fillStyle="#111";ctx.font="bold 17px Courier New";ctx.fillText(`Current: ${r.current.toFixed(3)}`,596,540);
+  ctx.font="bold 16px Tahoma";ctx.fillStyle="#222";
+  ctx.fillText("Evacuated tube",390,205);
+  ctx.fillText("Electron collector",620,485);
+  if(!r.emission&&s.intensity){ctx.fillStyle="#7b1b1b";ctx.font="bold 17px Tahoma";ctx.fillText("Photon energy below work function — no electrons emitted",235,343)}
+  if(s.showPhotons) photons.forEach(p=>{ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<7;i++){const t=i/6,x=p.x-22*t,y=p.y-25*t+Math.sin((p.phase+i)*1.9)*3;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();ctx.fillStyle=col;ctx.beginPath();ctx.arc(p.x,p.y,3,0,7);ctx.fill()});
+  if(s.showElectrons) electrons.forEach(q=>{ctx.fillStyle="#d91d25";ctx.beginPath();ctx.arc(q.x,q.y,4,0,7);ctx.fill();ctx.fillStyle="#fff";ctx.font="bold 8px Arial";ctx.fillText("−",q.x-2.5,q.y+2.5)});
+}
+
+function move(dt,s,r){
+  photonClock+=dt;electronClock+=dt;
+  if(photonClock>(s.intensity?.52-.42*s.intensity:Infinity)){photonClock=0;photons.push({x:273,y:108,phase:Math.random()*10})}
+  photons.forEach(p=>{p.x-=105*dt;p.y+=125*dt;p.phase+=7*dt});photons=photons.filter(p=>p.x>=205&&p.y<=275);
+  if(r.emission&&s.intensity&&electronClock>.18+.55*(1-s.intensity)){electronClock=0;const f=s.highestOnly?1:.12+.88*Math.random();electrons.push({x:214,y:287+Math.random()*120,vx:72+115*f,vy:(Math.random()-.5)*20,f})}
+  electrons.forEach(q=>{if(s.voltage<0&&r.maxKEEv*q.f+s.voltage<=0)q.vx-=260*dt;else q.vx+=s.voltage*18*dt;q.x+=q.vx*dt;q.y+=q.vy*dt});
+  electrons=electrons.filter(q=>q.x>205&&q.x<695&&q.y>270&&q.y<430);
+}
+
+function axes(ctx,b,xLabel,yLabel,xValues,yValues,X,Y,xFmt,yFmt){
+  xValues.forEach(v=>line(ctx,X(v),b.t,X(v),b.b,"#e6e6e6"));yValues.forEach(v=>line(ctx,b.l,Y(v),b.r,Y(v),"#e6e6e6"));
+  line(ctx,b.l,b.b,b.r,b.b,"#333",1.3);line(ctx,b.l,b.t,b.l,b.b,"#333",1.3);ctx.fillStyle="#333";ctx.font="10px Tahoma";ctx.textAlign="center";
+  xValues.forEach(v=>ctx.fillText(xFmt(v),X(v),b.b+15));ctx.fillText(xLabel,(b.l+b.r)/2,ctx.canvas.height-7);
+  ctx.save();ctx.translate(13,(b.t+b.b)/2);ctx.rotate(-Math.PI/2);ctx.fillText(yLabel,0,0);ctx.restore();ctx.textAlign="right";yValues.forEach(v=>ctx.fillText(yFmt(v),b.l-7,Y(v)+3));ctx.textAlign="left";
+}
+
+function drawGraph(s,r){
+  const canvas=el.graph,ctx=canvas.getContext("2d"),b={l:72,t:22,r:canvas.width-20,b:canvas.height-45};
+  ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  const W=b.r-b.l,H=b.b-b.t,map=(v,a,z,A,B)=>A+(v-a)/(z-a)*(B-A),dot=(x,y,col,fill=false)=>{ctx.beginPath();ctx.arc(x,y,fill?3.5:6,0,7);ctx[fill?"fillStyle":"strokeStyle"]=col;ctx.lineWidth=2;ctx[fill?"fill":"stroke"]()};
+  let title,meta;
+
+  if(graphType==="stopping"||graphType==="energy"){
+    const x0=0,x1=2e15,y0=0,y1=graphType==="stopping"?6:10,X=x=>map(x,x0,x1,b.l,b.r),Y=y=>map(y,y0,y1,b.b,b.t);
+    const xs=Array.from({length:9},(_,i)=>i*.25e15),ys=Array.from({length:y1+1},(_,i)=>i);
+    axes(ctx,b,"Frequency / 10¹⁵ Hz",graphType==="stopping"?"Stopping voltage / V":"Maximum kinetic energy / eV",xs,ys,X,Y,v=>(v/1e15).toFixed(2),v=>v);
+    ctx.strokeStyle="#2369aa";ctx.lineWidth=2;ctx.beginPath();let started=false;
+    for(let i=0;i<=400;i++){const f=x1*i/400,k=h*f/e-r.phi;if(k<0)continue;started?ctx.lineTo(X(f),Y(k)):ctx.moveTo(X(f),Y(k));started=true}ctx.stroke();
+    const threshold=r.thresholdFrequency;line(ctx,X(threshold),b.t,X(threshold),b.b,"#888");ctx.fillStyle="#555";ctx.font="10px Tahoma";ctx.fillText("threshold",X(threshold)+4,b.t+12);
+    dot(X(r.frequency),Y(graphType==="stopping"?r.stoppingVoltage:r.maxKEEv),"#c42424");
+    recorded.filter(p=>p.metalIndex===s.metalIndex).forEach(p=>dot(X(p.frequency),Y(graphType==="stopping"?p.stoppingVoltage:p.maxKEEv),"#13851d",true));
+    title=graphType==="stopping"?"Stopping voltage vs light frequency":"Maximum electron energy vs light frequency";
+    meta=graphType==="stopping"?`Gradient = h/e = ${(h/e).toExponential(3)} V s`:"Kmax = hf − φ; gradient = h";
+  }else{
+    const iv=graphType==="iv",x0=iv?-6:0,x1=iv?6:100,y0=0,y1=1.05,X=x=>map(x,x0,x1,b.l,b.r),Y=y=>map(y,y0,y1,b.b,b.t);
+    const xs=Array.from({length:iv?13:11},(_,i)=>iv?i-6:i*10),ys=[0,.2,.4,.6,.8,1];
+    axes(ctx,b,iv?"Battery voltage / V":"Light intensity / %","Normalised photocurrent",xs,ys,X,Y,v=>v.toFixed(0),v=>v.toFixed(1));
+    ctx.strokeStyle="#2369aa";ctx.lineWidth=2;ctx.beginPath();
+    const n=iv?400:100;
+    for(let i=0;i<=n;i++){const x=x0+(x1-x0)*i/n;let I=0;
+      if(r.emission){const intensity=iv?s.intensity:x/100,V=iv?x:s.voltage;I=V>=0?intensity:V<=-r.stoppingVoltage?0:intensity*(1+V/r.stoppingVoltage)}
+      i?ctx.lineTo(X(x),Y(I)):ctx.moveTo(X(x),Y(I))
+    }ctx.stroke();dot(X(iv?s.voltage:s.intensity*100),Y(r.current),"#c42424");
+    title=iv?"Photocurrent vs battery voltage":"Photocurrent vs light intensity";
+    meta=iv?`At V = −Vs = −${r.stoppingVoltage.toFixed(2)} V, current reaches zero`:"At fixed frequency, saturation current is proportional to photon rate";
+  }
+  $("graphTitle").textContent=title;$("graphMeta").textContent=meta;
+}
+
+function record(){
+  const s=state(),r=calc(s);recorded.push({...s,...r,metal:metals[s.metalIndex].name,intensityPercent:s.intensity*100});update();
+}
+function csv(){
+  if(!recorded.length)return alert("Record at least one point before exporting.");
+  const keys=["metal","wavelengthNm","frequency","photonEnergyEv","maxKEEv","stoppingVoltage","intensityPercent","voltage","current"];
+  const rows=[keys,...recorded.map(p=>keys.map(k=>p[k]))],text=rows.map(row=>row.map(v=>typeof v==="string"?`"${v.replaceAll('"','""')}"`:v).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download="photoelectric_data.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),0);
+}
+
+document.querySelectorAll('input[name="graph"]').forEach(x=>x.onchange=()=>{graphType=x.value;update()});
+[el.wavelength,el.intensity,el.voltage,el.metal,el.showPhotons,el.showElectrons,el.highestOnly].forEach(x=>x.oninput=update);
+$("recordPoint").onclick=record;$("clearPoints").onclick=()=>{recorded=[];update()};$("exportCsv").onclick=csv;
+
+function frame(now){const dt=Math.min(.04,(now-last)/1000);last=now;const s=state(),r=calc(s);move(dt,s,r);drawApparatus(s,r);requestAnimationFrame(frame)}
+update();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
